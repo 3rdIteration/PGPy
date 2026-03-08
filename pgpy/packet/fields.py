@@ -112,19 +112,12 @@ __all__ = ['SubPackets',
 
 # Mapping from EllipticCurveOID to ecdsa library curve objects
 # Used as fallback when PyCryptodome doesn't support the curve
-_ECDSA_CURVES = {}
-
-def _init_ecdsa_curves():
-    """Initialize the ecdsa curve mapping after EllipticCurveOID is available."""
-    global _ECDSA_CURVES
-    _ECDSA_CURVES = {
-        EllipticCurveOID.SECP256K1: _ecdsa_SECP256k1,
-        EllipticCurveOID.Brainpool_P256: _ecdsa_BRAINPOOLP256r1,
-        EllipticCurveOID.Brainpool_P384: _ecdsa_BRAINPOOLP384r1,
-        EllipticCurveOID.Brainpool_P512: _ecdsa_BRAINPOOLP512r1,
-    }
-
-_init_ecdsa_curves()
+_ECDSA_CURVES = {
+    EllipticCurveOID.SECP256K1: _ecdsa_SECP256k1,
+    EllipticCurveOID.Brainpool_P256: _ecdsa_BRAINPOOLP256r1,
+    EllipticCurveOID.Brainpool_P384: _ecdsa_BRAINPOOLP384r1,
+    EllipticCurveOID.Brainpool_P512: _ecdsa_BRAINPOOLP512r1,
+}
 
 # Mapping from hash digest size to hashlib hash function
 _ECDSA_HASH_BY_SIZE = {
@@ -613,7 +606,12 @@ class ECDSAPub(PubKey):
             if _has_embit and self.oid == EllipticCurveOID.SECP256K1:
                 try:
                     hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
-                    digest = hashfunc(subj).digest()[:32]
+                    digest = hashfunc(subj).digest()
+                    # embit requires exactly 32 bytes; left-pad or truncate as needed
+                    if len(digest) < 32:
+                        digest = b'\x00' * (32 - len(digest)) + digest
+                    else:
+                        digest = digest[:32]
                     byte_size = (self.oid.key_size + 7) // 8
                     point_bytes = (b'\x04'
                                    + int(self.p.x).to_bytes(byte_size, 'big')
@@ -1571,7 +1569,12 @@ class ECDSAPriv(PrivKey, ECDSAPub):
         if self.oid in _ECDSA_CURVES:
             if _has_embit and self.oid == EllipticCurveOID.SECP256K1:
                 hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
-                digest = hashfunc(sigdata).digest()[:32]
+                digest = hashfunc(sigdata).digest()
+                # embit requires exactly 32 bytes; left-pad or truncate as needed
+                if len(digest) < 32:
+                    digest = b'\x00' * (32 - len(digest)) + digest
+                else:
+                    digest = digest[:32]
                 secret_bytes = int(self.s).to_bytes(32, 'big')
                 sk = _embit_ec.PrivateKey(secret_bytes)
                 sig = sk.sign(digest)
