@@ -33,7 +33,7 @@ from Crypto.Cipher import AES as _AES
 from Crypto.Util.Padding import pad as _pkcs7_pad
 from Crypto.Util.Padding import unpad as _pkcs7_unpad
 
-from .._crypto_utils import get_hash_algo, concat_kdf
+from .._crypto_utils import get_hash_algo, concat_kdf, raw_pub_to_der, ED25519_ALG_ID, X25519_ALG_ID
 
 from .subpackets import Signature as SignatureSP
 from .subpackets import UserAttribute
@@ -608,11 +608,7 @@ class EdDSAPub(PubKey):
 
     def __pubkey__(self):
         # Build SubjectPublicKeyInfo DER for Ed25519 from raw public key bytes
-        raw_pub = bytes(self.p.x)
-        alg_id = bytes([0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70])  # Ed25519 OID: 1.3.101.112
-        bit_string = bytes([0x03, len(raw_pub) + 1, 0x00]) + raw_pub
-        der = bytes([0x30, len(alg_id) + len(bit_string)]) + alg_id + bit_string
-        return _ECC.import_key(der)
+        return _ECC.import_key(raw_pub_to_der(bytes(self.p.x), ED25519_ALG_ID))
 
     def __copy__(self):
         pkt = super(EdDSAPub, self).__copy__()
@@ -659,11 +655,7 @@ class ECDHPub(PubKey):
     def __pubkey__(self):
         if self.oid == EllipticCurveOID.Curve25519:
             # Build SubjectPublicKeyInfo DER for X25519 from raw public key bytes
-            raw_pub = bytes(self.p.x)
-            alg_id = bytes([0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e])  # X25519 OID: 1.3.101.110
-            bit_string = bytes([0x03, len(raw_pub) + 1, 0x00]) + raw_pub
-            der = bytes([0x30, len(alg_id) + len(bit_string)]) + alg_id + bit_string
-            return _ECC.import_key(der)
+            return _ECC.import_key(raw_pub_to_der(bytes(self.p.x), X25519_ALG_ID))
         else:
             return _ECC.construct(curve=self.oid.curve().pcd_name,
                                   point_x=int(self.p.x), point_y=int(self.p.y))
@@ -1748,11 +1740,7 @@ class ECDHCipherText(CipherText):
         km = pk.keymaterial
         if km.oid == EllipticCurveOID.Curve25519:
             # Build SubjectPublicKeyInfo DER for X25519 from raw ephemeral public key bytes
-            raw_pub = bytes(self.p.x)
-            alg_id = bytes([0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e])
-            bit_string = bytes([0x03, len(raw_pub) + 1, 0x00]) + raw_pub
-            der = bytes([0x30, len(alg_id) + len(bit_string)]) + alg_id + bit_string
-            v = _ECC.import_key(der)
+            v = _ECC.import_key(raw_pub_to_der(bytes(self.p.x), X25519_ALG_ID))
             # X25519 key exchange: shared = ephemeral_pub * my_priv
             shared_point = v.pointQ * km.__privkey__().d
             # X25519 shared secret is in little-endian format (RFC 7748)

@@ -6,7 +6,8 @@ import struct
 
 from Crypto.Hash import MD5, SHA1, SHA224, SHA256, SHA384, SHA512, RIPEMD160
 
-__all__ = ['get_hash_algo', 'get_hash_obj', 'concat_kdf']
+__all__ = ['get_hash_algo', 'get_hash_obj', 'concat_kdf',
+           'ED25519_ALG_ID', 'X25519_ALG_ID', 'raw_pub_to_der']
 
 # Map hash algorithm names (as used in PGPy) to pycryptodome hash modules
 _HASH_MODULES = {
@@ -60,3 +61,15 @@ def concat_kdf(hash_name, shared_secret, key_length, other_info):
         derived += h.digest()
 
     return derived[:key_length]
+
+
+# DER AlgorithmIdentifier for Ed25519 (OID 1.3.101.112)
+ED25519_ALG_ID = bytes([0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70])
+# DER AlgorithmIdentifier for X25519 (OID 1.3.101.110)
+X25519_ALG_ID = bytes([0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e])
+
+
+def raw_pub_to_der(raw_pub, alg_id):
+    """Wrap raw public key bytes into SubjectPublicKeyInfo DER format."""
+    bit_string = bytes([0x03, len(raw_pub) + 1, 0x00]) + raw_pub
+    return bytes([0x30, len(alg_id) + len(bit_string)]) + alg_id + bit_string

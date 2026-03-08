@@ -6,9 +6,6 @@ from Crypto.PublicKey import ECC
 
 __all__ = tuple()
 
-# pycryptodome curve name mapping
-_pcd_curve_names = {name for name in ('P-256', 'P-384', 'P-521', 'Ed25519', 'Curve25519')}
-
 
 def _get_supported_curves():
     """Return the set of curve names supported by pycryptodome."""
