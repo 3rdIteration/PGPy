@@ -38,6 +38,16 @@ def _get_supported_curves():
     if 'Ed25519' in supported:
         supported.add('ed25519')
 
+    # Also add curves supported by the ecdsa library as fallback
+    try:
+        from ecdsa import SECP256k1 as _s256k1, BRAINPOOLP256r1, BRAINPOOLP384r1, BRAINPOOLP512r1  # noqa: F811
+        supported.add('secp256k1')
+        supported.add('brainpoolP256r1')
+        supported.add('brainpoolP384r1')
+        supported.add('brainpoolP512r1')
+    except ImportError:
+        pass
+
     _get_supported_curves._curves = supported
     return supported
 

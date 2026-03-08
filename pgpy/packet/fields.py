@@ -33,6 +33,22 @@ from Cryptodome.Cipher import AES as _AES
 from Cryptodome.Util.Padding import pad as _pkcs7_pad
 from Cryptodome.Util.Padding import unpad as _pkcs7_unpad
 
+from ecdsa import SigningKey as _ecdsa_SigningKey
+from ecdsa import VerifyingKey as _ecdsa_VerifyingKey
+from ecdsa import SECP256k1 as _ecdsa_SECP256k1
+from ecdsa import BRAINPOOLP256r1 as _ecdsa_BRAINPOOLP256r1
+from ecdsa import BRAINPOOLP384r1 as _ecdsa_BRAINPOOLP384r1
+from ecdsa import BRAINPOOLP512r1 as _ecdsa_BRAINPOOLP512r1
+from ecdsa.util import sigencode_der as _ecdsa_sigencode_der
+from ecdsa.util import sigdecode_der as _ecdsa_sigdecode_der
+from ecdsa import ellipticcurve as _ecdsa_ec
+
+try:
+    from embit import ec as _embit_ec
+    _has_embit = True
+except ImportError:
+    _has_embit = False
+
 from .._crypto_utils import get_hash_algo, concat_kdf, raw_pub_to_der, ED25519_ALG_ID, X25519_ALG_ID
 
 from .subpackets import Signature as SignatureSP
@@ -93,6 +109,31 @@ __all__ = ['SubPackets',
            'RSACipherText',
            'ElGCipherText',
            'ECDHCipherText', ]
+
+# Mapping from EllipticCurveOID to ecdsa library curve objects
+# Used as fallback when PyCryptodome doesn't support the curve
+_ECDSA_CURVES = {}
+
+def _init_ecdsa_curves():
+    """Initialize the ecdsa curve mapping after EllipticCurveOID is available."""
+    global _ECDSA_CURVES
+    _ECDSA_CURVES = {
+        EllipticCurveOID.SECP256K1: _ecdsa_SECP256k1,
+        EllipticCurveOID.Brainpool_P256: _ecdsa_BRAINPOOLP256r1,
+        EllipticCurveOID.Brainpool_P384: _ecdsa_BRAINPOOLP384r1,
+        EllipticCurveOID.Brainpool_P512: _ecdsa_BRAINPOOLP512r1,
+    }
+
+_init_ecdsa_curves()
+
+# Mapping from hash digest size to hashlib hash function
+_ECDSA_HASH_BY_SIZE = {
+    20: hashlib.sha1,
+    28: hashlib.sha224,
+    32: hashlib.sha256,
+    48: hashlib.sha384,
+    64: hashlib.sha512,
+}
 
 
 class SubPackets(collections_abc.MutableMapping, Field):
@@ -568,6 +609,29 @@ class ECDSAPub(PubKey):
         return pkt
 
     def verify(self, subj, sigbytes, hash_alg):
+        if self.oid in _ECDSA_CURVES:
+            if _has_embit and self.oid == EllipticCurveOID.SECP256K1:
+                try:
+                    hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
+                    digest = hashfunc(subj).digest()[:32]
+                    byte_size = (self.oid.key_size + 7) // 8
+                    point_bytes = (b'\x04'
+                                   + int(self.p.x).to_bytes(byte_size, 'big')
+                                   + int(self.p.y).to_bytes(byte_size, 'big'))
+                    pub = _embit_ec.PublicKey.parse(point_bytes)
+                    sig = _embit_ec.Signature.parse(sigbytes)
+                    return pub.verify(sig, digest)
+                except Exception:
+                    return False
+            try:
+                curve = _ECDSA_CURVES[self.oid]
+                point = _ecdsa_ec.PointJacobi(curve.curve, int(self.p.x), int(self.p.y), 1)
+                vk = _ecdsa_VerifyingKey.from_public_point(point, curve=curve)
+                hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
+                vk.verify(sigbytes, subj, hashfunc=hashfunc, sigdecode=_ecdsa_sigdecode_der)
+            except Exception:
+                return False
+            return True
         try:
             h = hash_alg.new(subj)
             _DSS.new(self.__pubkey__(), 'deterministic-rfc6979', encoding='der').verify(h, sigbytes)
@@ -1470,10 +1534,18 @@ class ECDSAPriv(PrivKey, ECDSAPub):
         if not self.oid.can_gen:
             raise ValueError("Curve not currently supported: {}".format(oid.name))
 
-        pk = _ECC.generate(curve=self.oid.curve().pcd_name)
-        self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Standard,
-                                     MPI(int(pk.pointQ.x)), MPI(int(pk.pointQ.y)))
-        self.s = MPI(int(pk.d))
+        if self.oid in _ECDSA_CURVES:
+            curve = _ECDSA_CURVES[self.oid]
+            sk = _ecdsa_SigningKey.generate(curve=curve)
+            vk = sk.verifying_key
+            self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Standard,
+                                         MPI(vk.pubkey.point.x()), MPI(vk.pubkey.point.y()))
+            self.s = MPI(sk.privkey.secret_multiplier)
+        else:
+            pk = _ECC.generate(curve=self.oid.curve().pcd_name)
+            self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Standard,
+                                         MPI(int(pk.pointQ.x)), MPI(int(pk.pointQ.y)))
+            self.s = MPI(int(pk.d))
         self._compute_chksum()
 
     def parse(self, packet):
@@ -1496,6 +1568,18 @@ class ECDSAPriv(PrivKey, ECDSAPub):
         self.s = MPI(kb)
 
     def sign(self, sigdata, hash_alg):
+        if self.oid in _ECDSA_CURVES:
+            if _has_embit and self.oid == EllipticCurveOID.SECP256K1:
+                hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
+                digest = hashfunc(sigdata).digest()[:32]
+                secret_bytes = int(self.s).to_bytes(32, 'big')
+                sk = _embit_ec.PrivateKey(secret_bytes)
+                sig = sk.sign(digest)
+                return sig.serialize()
+            curve = _ECDSA_CURVES[self.oid]
+            sk = _ecdsa_SigningKey.from_secret_exponent(int(self.s), curve=curve)
+            hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
+            return sk.sign_deterministic(sigdata, hashfunc=hashfunc, sigencode=_ecdsa_sigencode_der)
         h = hash_alg.new(sigdata)
         return _DSS.new(self.__privkey__(), 'deterministic-rfc6979', encoding='der').sign(h)
 
@@ -1718,6 +1802,18 @@ class ECDHCipherText(CipherText):
             shared_point = km.__pubkey__().pointQ * v.d
             # X25519 shared secret is in little-endian format (RFC 7748)
             s = int(shared_point.x).to_bytes(32, 'little')
+        elif km.oid in _ECDSA_CURVES:
+            curve = _ECDSA_CURVES[km.oid]
+            v_sk = _ecdsa_SigningKey.generate(curve=curve)
+            v_vk = v_sk.verifying_key
+            x = MPI(v_vk.pubkey.point.x())
+            y = MPI(v_vk.pubkey.point.y())
+            ct.p = ECPoint.from_values(km.oid.key_size, ECPointFormat.Standard, x, y)
+            # ECDH: shared = recipient_pub * ephemeral_priv
+            pub_point = _ecdsa_ec.PointJacobi(curve.curve, int(km.p.x), int(km.p.y), 1)
+            shared_point = pub_point * v_sk.privkey.secret_multiplier
+            byte_size = (km.oid.key_size + 7) // 8
+            s = int(shared_point.x()).to_bytes(byte_size, 'big')
         else:
             v = _ECC.generate(curve=km.oid.curve().pcd_name)
             x = MPI(int(v.pointQ.x))
@@ -1745,6 +1841,14 @@ class ECDHCipherText(CipherText):
             shared_point = v.pointQ * km.__privkey__().d
             # X25519 shared secret is in little-endian format (RFC 7748)
             s = int(shared_point.x).to_bytes(32, 'little')
+        elif km.oid in _ECDSA_CURVES:
+            curve = _ECDSA_CURVES[km.oid]
+            # reconstruct ephemeral public point
+            eph_point = _ecdsa_ec.PointJacobi(curve.curve, int(self.p.x), int(self.p.y), 1)
+            # ECDH: shared = ephemeral_pub * recipient_priv
+            shared_point = eph_point * int(km.s)
+            byte_size = (km.oid.key_size + 7) // 8
+            s = int(shared_point.x()).to_bytes(byte_size, 'big')
         else:
             # assemble the public component of ephemeral key v
             v = _ECC.construct(curve=km.oid.curve().pcd_name,
