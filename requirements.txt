@@ -1,2 +1,2 @@
-cryptography>=3.3.2
+pycryptodome>=3.15
 pyasn1

@@ -10,8 +10,9 @@ import warnings
 
 from datetime import datetime, timezone
 
-from cryptography.hazmat.primitives import constant_time
-from cryptography.hazmat.primitives.asymmetric import padding
+import hmac
+
+from Crypto.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
 
 from .fields import DSAPriv, DSAPub, DSASignature
 from .fields import ECDSAPub, ECDSAPriv, ECDSASignature
@@ -212,8 +213,8 @@ class PKESessionKeyV3(PKESessionKey):
             ct = self.ct.me_mod_n.to_mpibytes()[2:]
             ct = b'\x00' * ((pk.keymaterial.__privkey__().key_size // 8) - len(ct)) + ct
 
-            decrypter = pk.keymaterial.__privkey__().decrypt
-            decargs = (ct, padding.PKCS1v15(),)
+            decrypter = _PKCS1_v1_5.new(pk.keymaterial.__privkey__()).decrypt
+            decargs = (ct, None,)
 
         elif self.pkalg == PubKeyAlgorithm.ECDH:
             decrypter = pk
@@ -256,8 +257,8 @@ class PKESessionKeyV3(PKESessionKey):
         m += self.int_to_bytes(sum(bytearray(symkey)) % 65536, 2)
 
         if self.pkalg == PubKeyAlgorithm.RSAEncryptOrSign:
-            encrypter = pk.keymaterial.__pubkey__().encrypt
-            encargs = (bytes(m), padding.PKCS1v15(),)
+            encrypter = _PKCS1_v1_5.new(pk.keymaterial.__pubkey__()).encrypt
+            encargs = (bytes(m),)
 
         elif self.pkalg == PubKeyAlgorithm.ECDH:
             encrypter = pk
@@ -1103,7 +1104,7 @@ class SKEData(Packet):
 
         ivl2 = bytes(pt_prefix[:2])
 
-        if not constant_time.bytes_eq(iv[-2:], ivl2):
+        if not hmac.compare_digest(iv[-2:], ivl2):
             raise PGPDecryptionError("Decryption failed")
 
         pt = _decrypt(bytes(self.ct[block_size_bytes + 2:]), bytes(key), alg, iv=iv_resync)
@@ -1572,7 +1573,7 @@ class IntegrityProtectedSKEDataV1(IntegrityProtectedSKEData):
 
         # do the MDC checks
         _expected_mdcbytes = b'\xd3\x14' + hashlib.new('SHA1', pt[:-20]).digest()
-        if not constant_time.bytes_eq(bytes(pt[-22:]), _expected_mdcbytes):
+        if not hmac.compare_digest(bytes(pt[-22:]), _expected_mdcbytes):
             raise PGPDecryptionError("Decryption failed")  # pragma: no cover
 
         iv = bytes(pt[:alg.block_size // 8])
@@ -1581,7 +1582,7 @@ class IntegrityProtectedSKEDataV1(IntegrityProtectedSKEData):
         ivl2 = bytes(pt[:2])
         del pt[:2]
 
-        if not constant_time.bytes_eq(iv[-2:], ivl2):
+        if not hmac.compare_digest(iv[-2:], ivl2):
             raise PGPDecryptionError("Decryption failed")  # pragma: no cover
 
         return pt
