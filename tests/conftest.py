@@ -14,8 +14,8 @@ else:
 import os
 import sys
 
-import Crypto
-pycryptodome_ver = Crypto.__version__
+import Cryptodome
+pycryptodomex_ver = Cryptodome.__version__
 
 gnupghome = os.path.join(os.path.dirname(__file__), 'gnupghome')
 
@@ -64,8 +64,8 @@ def pytest_configure(config):
         if os.getenv('CI'):
             sys.exit(1)
 
-    # display the working directory and the PyCryptodome/GPG versions
+    # display the working directory and the PyCryptodomex/GPG versions
     print("Working Directory: " + os.getcwd())
-    print("Using PyCryptodome " + str(pycryptodome_ver))
+    print("Using PyCryptodomex " + str(pycryptodomex_ver))
     print("Using GnuPG   " + str(gpg_ver))
     print("")

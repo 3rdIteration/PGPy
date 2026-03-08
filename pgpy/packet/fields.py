@@ -22,16 +22,16 @@ from pyasn1.type.univ import Integer
 from pyasn1.type.univ import Sequence
 from pyasn1.type.namedtype import NamedTypes, NamedType
 
-from Crypto.PublicKey import RSA as _RSA
-from Crypto.PublicKey import DSA as _DSA
-from Crypto.PublicKey import ECC as _ECC
-from Crypto.Signature import pkcs1_15 as _pkcs1_15
-from Crypto.Signature import DSS as _DSS
-from Crypto.Signature import eddsa as _eddsa
-from Crypto.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
-from Crypto.Cipher import AES as _AES
-from Crypto.Util.Padding import pad as _pkcs7_pad
-from Crypto.Util.Padding import unpad as _pkcs7_unpad
+from Cryptodome.PublicKey import RSA as _RSA
+from Cryptodome.PublicKey import DSA as _DSA
+from Cryptodome.PublicKey import ECC as _ECC
+from Cryptodome.Signature import pkcs1_15 as _pkcs1_15
+from Cryptodome.Signature import DSS as _DSS
+from Cryptodome.Signature import eddsa as _eddsa
+from Cryptodome.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
+from Cryptodome.Cipher import AES as _AES
+from Cryptodome.Util.Padding import pad as _pkcs7_pad
+from Cryptodome.Util.Padding import unpad as _pkcs7_unpad
 
 from .._crypto_utils import get_hash_algo, concat_kdf, raw_pub_to_der, ED25519_ALG_ID, X25519_ALG_ID
 
@@ -386,7 +386,7 @@ class PubKey(MPIs):
 
     @abc.abstractmethod
     def __pubkey__(self):
-        """return the requisite *PublicKey class from the pycryptodome library"""
+        """return the requisite *PublicKey class from the pycryptodomex library"""
 
     def __len__(self):
         return sum(len(getattr(self, i)) for i in self.__pubfields__)
@@ -1191,7 +1191,7 @@ class PrivKey(PubKey):
 
     @abc.abstractmethod
     def __privkey__(self):
-        """return the requisite *PrivateKey class from the pycryptodome library"""
+        """return the requisite *PrivateKey class from the pycryptodomex library"""
 
     @abc.abstractmethod
     def _generate(self, key_size):
@@ -1312,7 +1312,7 @@ class RSAPriv(PrivKey, RSAPub):
         self.q = MPI(pk.q)
         # from the RFC:
         # "- MPI of u, the multiplicative inverse of p, mod q."
-        # pycryptodome: pk.u = p^-1 mod q, which matches the PGP RFC
+        # pycryptodomex: pk.u = p^-1 mod q, which matches the PGP RFC
         self.u = MPI(pk.u)
 
         del pk

@@ -1,15 +1,15 @@
 """ _crypto_utils.py
-Utility functions for pycryptodome crypto operations
+Utility functions for pycryptodomex crypto operations
 """
 import hashlib
 import struct
 
-from Crypto.Hash import MD5, SHA1, SHA224, SHA256, SHA384, SHA512, RIPEMD160
+from Cryptodome.Hash import MD5, SHA1, SHA224, SHA256, SHA384, SHA512, RIPEMD160
 
 __all__ = ['get_hash_algo', 'get_hash_obj', 'concat_kdf',
            'ED25519_ALG_ID', 'X25519_ALG_ID', 'raw_pub_to_der']
 
-# Map hash algorithm names (as used in PGPy) to pycryptodome hash modules
+# Map hash algorithm names (as used in PGPy) to pycryptodomex hash modules
 _HASH_MODULES = {
     'MD5': MD5,
     'SHA1': SHA1,
@@ -22,9 +22,9 @@ _HASH_MODULES = {
 
 
 def get_hash_algo(name):
-    """Get the pycryptodome hash module by name.
+    """Get the pycryptodomex hash module by name.
 
-    Returns the module (e.g., Crypto.Hash.SHA256) which can be used as:
+    Returns the module (e.g., Cryptodome.Hash.SHA256) which can be used as:
         hash_obj = get_hash_algo('SHA256').new(data)
     """
     if name in _HASH_MODULES:
@@ -33,7 +33,7 @@ def get_hash_algo(name):
 
 
 def get_hash_obj(name, data=None):
-    """Create a new pycryptodome hash object by algorithm name.
+    """Create a new pycryptodomex hash object by algorithm name.
 
     Returns a hash object (e.g., SHA256.new(data)).
     """

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import hmac
 
-from Crypto.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
+from Cryptodome.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
 
 from .fields import DSAPriv, DSAPub, DSASignature
 from .fields import ECDSAPub, ECDSAPriv, ECDSASignature

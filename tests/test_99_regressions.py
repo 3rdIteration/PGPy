@@ -27,8 +27,8 @@ def test_reg_bug_56():
     from pgpy.constants import PubKeyAlgorithm
     from pgpy.constants import SignatureType
 
-    from Crypto.Signature import pkcs1_15
-    from Crypto.Hash import SHA512
+    from Cryptodome.Signature import pkcs1_15
+    from Cryptodome.Hash import SHA512
 
     # do a regression test on issue #56
     # re-create a signature that would have been encoded improperly as with issue #56

@@ -14,10 +14,10 @@ from enum import IntFlag
 
 from pyasn1.type.univ import ObjectIdentifier
 
-from Crypto.Cipher import AES
-from Crypto.Cipher import DES3
-from Crypto.Cipher import CAST
-from Crypto.Cipher import Blowfish
+from Cryptodome.Cipher import AES
+from Cryptodome.Cipher import DES3
+from Cryptodome.Cipher import CAST
+from Cryptodome.Cipher import Blowfish
 
 from .types import FlagEnum
 from .decorators import classproperty
@@ -218,8 +218,8 @@ class SymmetricKeyAlgorithm(IntEnum):
         c = self.cipher
         if hasattr(c, 'block_size'):
             bs = c.block_size
-            # pycryptodome uses bytes; convert to bits if needed
-            if bs <= 32:  # pycryptodome returns bytes (e.g. 16 for AES)
+            # pycryptodomex uses bytes; convert to bits if needed
+            if bs <= 32:  # pycryptodomex returns bytes (e.g. 16 for AES)
                 return bs * 8
             return bs  # already in bits (namedtuple stubs)
         raise NotImplementedError(repr(self))

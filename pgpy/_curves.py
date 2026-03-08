@@ -2,18 +2,18 @@
 define elliptic curve descriptors for use in PGPy
 """
 
-from Crypto.PublicKey import ECC
+from Cryptodome.PublicKey import ECC
 
 __all__ = tuple()
 
 
 def _get_supported_curves():
-    """Return the set of curve names supported by pycryptodome."""
+    """Return the set of curve names supported by pycryptodomex."""
     if hasattr(_get_supported_curves, '_curves'):
         return _get_supported_curves._curves
 
     supported = set()
-    # Test each curve pycryptodome might support
+    # Test each curve pycryptodomex might support
     test_curves = [
         'P-256', 'P-384', 'P-521', 'Ed25519', 'Curve25519',
         'brainpoolP256r1', 'brainpoolP384r1', 'brainpoolP512r1',
