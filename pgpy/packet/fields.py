@@ -42,6 +42,7 @@ from ecdsa import BRAINPOOLP512r1 as _ecdsa_BRAINPOOLP512r1
 from ecdsa.util import sigencode_der as _ecdsa_sigencode_der
 from ecdsa.util import sigdecode_der as _ecdsa_sigdecode_der
 from ecdsa import ellipticcurve as _ecdsa_ec
+from ecdsa.keys import BadSignatureError as _ecdsa_BadSignatureError
 
 try:
     from embit import ec as _embit_ec
@@ -607,7 +608,9 @@ class ECDSAPub(PubKey):
                 try:
                     hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
                     digest = hashfunc(subj).digest()
-                    # embit requires exactly 32 bytes; left-pad or truncate as needed
+                    # Per FIPS 186-4 §6.4, ECDSA uses the leftmost min(N, hashlen) bits
+                    # of the hash, where N is the curve order bit-length (256 for secp256k1).
+                    # embit/libsecp256k1 requires exactly 32 bytes.
                     if len(digest) < 32:
                         digest = b'\x00' * (32 - len(digest)) + digest
                     else:
@@ -619,7 +622,7 @@ class ECDSAPub(PubKey):
                     pub = _embit_ec.PublicKey.parse(point_bytes)
                     sig = _embit_ec.Signature.parse(sigbytes)
                     return pub.verify(sig, digest)
-                except Exception:
+                except (ValueError, TypeError):
                     return False
             try:
                 curve = _ECDSA_CURVES[self.oid]
@@ -627,7 +630,7 @@ class ECDSAPub(PubKey):
                 vk = _ecdsa_VerifyingKey.from_public_point(point, curve=curve)
                 hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
                 vk.verify(sigbytes, subj, hashfunc=hashfunc, sigdecode=_ecdsa_sigdecode_der)
-            except Exception:
+            except (_ecdsa_BadSignatureError, ValueError, TypeError):
                 return False
             return True
         try:
@@ -1570,7 +1573,9 @@ class ECDSAPriv(PrivKey, ECDSAPub):
             if _has_embit and self.oid == EllipticCurveOID.SECP256K1:
                 hashfunc = _ECDSA_HASH_BY_SIZE[hash_alg.digest_size]
                 digest = hashfunc(sigdata).digest()
-                # embit requires exactly 32 bytes; left-pad or truncate as needed
+                # Per FIPS 186-4 §6.4, ECDSA uses the leftmost min(N, hashlen) bits
+                # of the hash, where N is the curve order bit-length (256 for secp256k1).
+                # embit/libsecp256k1 requires exactly 32 bytes.
                 if len(digest) < 32:
                     digest = b'\x00' * (32 - len(digest)) + digest
                 else:
