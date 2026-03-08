@@ -22,26 +22,18 @@ from pyasn1.type.univ import Integer
 from pyasn1.type.univ import Sequence
 from pyasn1.type.namedtype import NamedTypes, NamedType
 
-from cryptography.exceptions import InvalidSignature
+from Cryptodome.PublicKey import RSA as _RSA
+from Cryptodome.PublicKey import DSA as _DSA
+from Cryptodome.PublicKey import ECC as _ECC
+from Cryptodome.Signature import pkcs1_15 as _pkcs1_15
+from Cryptodome.Signature import DSS as _DSS
+from Cryptodome.Signature import eddsa as _eddsa
+from Cryptodome.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
+from Cryptodome.Cipher import AES as _AES
+from Cryptodome.Util.Padding import pad as _pkcs7_pad
+from Cryptodome.Util.Padding import unpad as _pkcs7_unpad
 
-from cryptography.hazmat.backends import default_backend
-
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives import serialization
-
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.asymmetric import dsa
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric import ed25519
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric import x25519
-
-from cryptography.hazmat.primitives.kdf.concatkdf import ConcatKDFHash
-
-from cryptography.hazmat.primitives.keywrap import aes_key_wrap
-from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
-
-from cryptography.hazmat.primitives.padding import PKCS7
+from .._crypto_utils import get_hash_algo, concat_kdf, raw_pub_to_der, ED25519_ALG_ID, X25519_ALG_ID
 
 from .subpackets import Signature as SignatureSP
 from .subpackets import UserAttribute
@@ -394,7 +386,7 @@ class PubKey(MPIs):
 
     @abc.abstractmethod
     def __pubkey__(self):
-        """return the requisite *PublicKey class from the cryptography library"""
+        """return the requisite *PublicKey class from the pycryptodomex library"""
 
     def __len__(self):
         return sum(len(getattr(self, i)) for i in self.__pubfields__)
@@ -436,14 +428,15 @@ class RSAPub(PubKey):
     __pubfields__ = ('n', 'e')
 
     def __pubkey__(self):
-        return rsa.RSAPublicNumbers(self.e, self.n).public_key(default_backend())
+        return _RSA.construct((int(self.n), int(self.e)))
 
     def verify(self, subj, sigbytes, hash_alg):
         # zero-pad sigbytes if necessary
         sigbytes = (b'\x00' * (self.n.byte_length() - len(sigbytes))) + sigbytes
         try:
-            self.__pubkey__().verify(sigbytes, subj, padding.PKCS1v15(), hash_alg)
-        except InvalidSignature:
+            h = hash_alg.new(subj)
+            _pkcs1_15.new(self.__pubkey__()).verify(h, sigbytes)
+        except (ValueError, TypeError):
             return False
         return True
 
@@ -456,13 +449,13 @@ class DSAPub(PubKey):
     __pubfields__ = ('p', 'q', 'g', 'y')
 
     def __pubkey__(self):
-        params = dsa.DSAParameterNumbers(self.p, self.q, self.g)
-        return dsa.DSAPublicNumbers(self.y, params).public_key(default_backend())
+        return _DSA.construct((int(self.y), int(self.g), int(self.p), int(self.q)))
 
     def verify(self, subj, sigbytes, hash_alg):
         try:
-            self.__pubkey__().verify(sigbytes, subj, hash_alg)
-        except InvalidSignature:
+            h = hash_alg.new(subj)
+            _DSS.new(self.__pubkey__(), 'fips-186-3', encoding='der').verify(h, sigbytes)
+        except (ValueError, TypeError):
             return False
         return True
 
@@ -560,7 +553,8 @@ class ECDSAPub(PubKey):
         return len(self.p) + len(encoder.encode(self.oid.value)) - 1
 
     def __pubkey__(self):
-        return ec.EllipticCurvePublicNumbers(self.p.x, self.p.y, self.oid.curve()).public_key(default_backend())
+        return _ECC.construct(curve=self.oid.curve().pcd_name,
+                              point_x=int(self.p.x), point_y=int(self.p.y))
 
     def __bytearray__(self):
         _b = bytearray()
@@ -575,8 +569,9 @@ class ECDSAPub(PubKey):
 
     def verify(self, subj, sigbytes, hash_alg):
         try:
-            self.__pubkey__().verify(sigbytes, subj, ec.ECDSA(hash_alg))
-        except InvalidSignature:
+            h = hash_alg.new(subj)
+            _DSS.new(self.__pubkey__(), 'deterministic-rfc6979', encoding='der').verify(h, sigbytes)
+        except (ValueError, TypeError):
             return False
         return True
 
@@ -612,7 +607,8 @@ class EdDSAPub(PubKey):
         return _b
 
     def __pubkey__(self):
-        return ed25519.Ed25519PublicKey.from_public_bytes(self.p.x)
+        # Build SubjectPublicKeyInfo DER for Ed25519 from raw public key bytes
+        return _ECC.import_key(raw_pub_to_der(bytes(self.p.x), ED25519_ALG_ID))
 
     def __copy__(self):
         pkt = super(EdDSAPub, self).__copy__()
@@ -622,12 +618,11 @@ class EdDSAPub(PubKey):
     def verify(self, subj, sigbytes, hash_alg):
         # GnuPG requires a pre-hashing with EdDSA
         # https://tools.ietf.org/html/draft-ietf-openpgp-rfc4880bis-06#section-14.8
-        digest = hashes.Hash(hash_alg, backend=default_backend())
-        digest.update(subj)
-        subj = digest.finalize()
+        h = hash_alg.new(subj)
+        subj = h.digest()
         try:
-            self.__pubkey__().verify(sigbytes, subj)
-        except InvalidSignature:
+            _eddsa.new(self.__pubkey__(), 'rfc8032').verify(subj, sigbytes)
+        except (ValueError, TypeError):
             return False
         return True
 
@@ -659,9 +654,11 @@ class ECDHPub(PubKey):
 
     def __pubkey__(self):
         if self.oid == EllipticCurveOID.Curve25519:
-            return x25519.X25519PublicKey.from_public_bytes(self.p.x)
+            # Build SubjectPublicKeyInfo DER for X25519 from raw public key bytes
+            return _ECC.import_key(raw_pub_to_der(bytes(self.p.x), X25519_ALG_ID))
         else:
-            return ec.EllipticCurvePublicNumbers(self.p.x, self.p.y, self.oid.curve()).public_key(default_backend())
+            return _ECC.construct(curve=self.oid.curve().pcd_name,
+                                  point_x=int(self.p.x), point_y=int(self.p.y))
 
     def __bytearray__(self):
         _b = bytearray()
@@ -1122,7 +1119,7 @@ class ECKDF(Field):
         del packet[0]
 
     def derive_key(self, s, curve, pkalg, fingerprint):
-        # wrapper around the Concatenation KDF method provided by cryptography
+        # wrapper around the Concatenation KDF
         # assemble the additional data as defined in RFC 6637:
         #  Param = curve_OID_len || curve_OID || public_key_alg_ID || 03 || 01 || KDF_hash_ID || KEK_alg_ID for AESKeyWrap || "Anonymous
         data = bytearray()
@@ -1134,8 +1131,7 @@ class ECKDF(Field):
         data += b'Anonymous Sender    '
         data += binascii.unhexlify(fingerprint.replace(' ', ''))
 
-        ckdf = ConcatKDFHash(algorithm=getattr(hashes, self.halg.name)(), length=self.encalg.key_size // 8, otherinfo=bytes(data), backend=default_backend())
-        return ckdf.derive(s)
+        return concat_kdf(self.halg.name, s, self.encalg.key_size // 8, bytes(data))
 
 
 class PrivKey(PubKey):
@@ -1195,7 +1191,7 @@ class PrivKey(PubKey):
 
     @abc.abstractmethod
     def __privkey__(self):
-        """return the requisite *PrivateKey class from the cryptography library"""
+        """return the requisite *PrivateKey class from the pycryptodomex library"""
 
     @abc.abstractmethod
     def _generate(self, key_size):
@@ -1296,11 +1292,7 @@ class RSAPriv(PrivKey, RSAPub):
     __privfields__ = ('d', 'p', 'q', 'u')
 
     def __privkey__(self):
-        return rsa.RSAPrivateNumbers(self.p, self.q, self.d,
-                                     rsa.rsa_crt_dmp1(self.d, self.p),
-                                     rsa.rsa_crt_dmq1(self.d, self.q),
-                                     rsa.rsa_crt_iqmp(self.p, self.q),
-                                     rsa.RSAPublicNumbers(self.e, self.n)).private_key(default_backend())
+        return _RSA.construct((int(self.n), int(self.e), int(self.d), int(self.p), int(self.q)))
 
     def _compute_chksum(self):
         chs = sum(sum(bytearray(c.to_mpibytes())) for c in (self.d, self.p, self.q, self.u)) % 65536
@@ -1311,22 +1303,18 @@ class RSAPriv(PrivKey, RSAPub):
             raise PGPError("key is already populated")
 
         # generate some big numbers!
-        pk = rsa.generate_private_key(65537, key_size, default_backend())
-        pkn = pk.private_numbers()
+        pk = _RSA.generate(key_size)
 
-        self.n = MPI(pkn.public_numbers.n)
-        self.e = MPI(pkn.public_numbers.e)
-        self.d = MPI(pkn.d)
-        self.p = MPI(pkn.p)
-        self.q = MPI(pkn.q)
+        self.n = MPI(pk.n)
+        self.e = MPI(pk.e)
+        self.d = MPI(pk.d)
+        self.p = MPI(pk.p)
+        self.q = MPI(pk.q)
         # from the RFC:
         # "- MPI of u, the multiplicative inverse of p, mod q."
-        # or, simply, p^-1 mod p
-        # rsa.rsa_crt_iqmp(p, q) normally computes q^-1 mod p,
-        # so if we swap the values around we get the answer we want
-        self.u = MPI(rsa.rsa_crt_iqmp(pkn.q, pkn.p))
+        # pycryptodomex: pk.u = p^-1 mod q, which matches the PGP RFC
+        self.u = MPI(pk.u)
 
-        del pkn
         del pk
 
         self._compute_chksum()
@@ -1363,16 +1351,15 @@ class RSAPriv(PrivKey, RSAPub):
             del kb
 
     def sign(self, sigdata, hash_alg):
-        return self.__privkey__().sign(sigdata, padding.PKCS1v15(), hash_alg)
+        h = hash_alg.new(sigdata)
+        return _pkcs1_15.new(self.__privkey__()).sign(h)
 
 
 class DSAPriv(PrivKey, DSAPub):
     __privfields__ = ('x',)
 
     def __privkey__(self):
-        params = dsa.DSAParameterNumbers(self.p, self.q, self.g)
-        pn = dsa.DSAPublicNumbers(self.y, params)
-        return dsa.DSAPrivateNumbers(self.x, pn).private_key(default_backend())
+        return _DSA.construct((int(self.y), int(self.g), int(self.p), int(self.q), int(self.x)))
 
     def _compute_chksum(self):
         chs = sum(bytearray(self.x.to_mpibytes())) % 65536
@@ -1383,16 +1370,14 @@ class DSAPriv(PrivKey, DSAPub):
             raise PGPError("key is already populated")
 
         # generate some big numbers!
-        pk = dsa.generate_private_key(key_size, default_backend())
-        pkn = pk.private_numbers()
+        pk = _DSA.generate(key_size)
 
-        self.p = MPI(pkn.public_numbers.parameter_numbers.p)
-        self.q = MPI(pkn.public_numbers.parameter_numbers.q)
-        self.g = MPI(pkn.public_numbers.parameter_numbers.g)
-        self.y = MPI(pkn.public_numbers.y)
-        self.x = MPI(pkn.x)
+        self.p = MPI(pk.p)
+        self.q = MPI(pk.q)
+        self.g = MPI(pk.g)
+        self.y = MPI(pk.y)
+        self.x = MPI(pk.x)
 
-        del pkn
         del pk
 
         self._compute_chksum()
@@ -1422,7 +1407,8 @@ class DSAPriv(PrivKey, DSAPub):
             del kb
 
     def sign(self, sigdata, hash_alg):
-        return self.__privkey__().sign(sigdata, hash_alg)
+        h = hash_alg.new(sigdata)
+        return _DSS.new(self.__privkey__(), 'fips-186-3', encoding='der').sign(h)
 
 
 class ElGPriv(PrivKey, ElGPub):
@@ -1467,8 +1453,9 @@ class ECDSAPriv(PrivKey, ECDSAPub):
     __privfields__ = ('s', )
 
     def __privkey__(self):
-        ecp = ec.EllipticCurvePublicNumbers(self.p.x, self.p.y, self.oid.curve())
-        return ec.EllipticCurvePrivateNumbers(self.s, ecp).private_key(default_backend())
+        return _ECC.construct(curve=self.oid.curve().pcd_name,
+                              d=int(self.s),
+                              point_x=int(self.p.x), point_y=int(self.p.y))
 
     def _compute_chksum(self):
         chs = sum(bytearray(self.s.to_mpibytes())) % 65536
@@ -1483,10 +1470,10 @@ class ECDSAPriv(PrivKey, ECDSAPub):
         if not self.oid.can_gen:
             raise ValueError("Curve not currently supported: {}".format(oid.name))
 
-        pk = ec.generate_private_key(self.oid.curve(), default_backend())
-        pubn = pk.public_key().public_numbers()
-        self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Standard, MPI(pubn.x), MPI(pubn.y))
-        self.s = MPI(pk.private_numbers().private_value)
+        pk = _ECC.generate(curve=self.oid.curve().pcd_name)
+        self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Standard,
+                                     MPI(int(pk.pointQ.x)), MPI(int(pk.pointQ.y)))
+        self.s = MPI(int(pk.d))
         self._compute_chksum()
 
     def parse(self, packet):
@@ -1509,7 +1496,8 @@ class ECDSAPriv(PrivKey, ECDSAPub):
         self.s = MPI(kb)
 
     def sign(self, sigdata, hash_alg):
-        return self.__privkey__().sign(sigdata, ec.ECDSA(hash_alg))
+        h = hash_alg.new(sigdata)
+        return _DSS.new(self.__privkey__(), 'deterministic-rfc6979', encoding='der').sign(h)
 
 
 class EdDSAPriv(PrivKey, EdDSAPub):
@@ -1517,7 +1505,7 @@ class EdDSAPriv(PrivKey, EdDSAPub):
 
     def __privkey__(self):
         s = self.int_to_bytes(self.s, (self.oid.key_size + 7) // 8)
-        return ed25519.Ed25519PrivateKey.from_private_bytes(s)
+        return _ECC.construct(curve='Ed25519', seed=s)
 
     def _compute_chksum(self):
         chs = sum(bytearray(self.s.to_mpibytes())) % 65536
@@ -1532,14 +1520,10 @@ class EdDSAPriv(PrivKey, EdDSAPub):
         if self.oid != EllipticCurveOID.Ed25519:
             raise ValueError("EdDSA only supported with {}".format(EllipticCurveOID.Ed25519))
 
-        pk = ed25519.Ed25519PrivateKey.generate()
-        x = pk.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
+        pk = _ECC.generate(curve='Ed25519')
+        x = pk.public_key().export_key(format='raw')
         self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Native, x)
-        self.s = MPI(self.bytes_to_int(pk.private_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PrivateFormat.Raw,
-            encryption_algorithm=serialization.NoEncryption()
-        )))
+        self.s = MPI(self.bytes_to_int(pk.seed))
         self._compute_chksum()
 
     def parse(self, packet):
@@ -1563,10 +1547,9 @@ class EdDSAPriv(PrivKey, EdDSAPub):
     def sign(self, sigdata, hash_alg):
         # GnuPG requires a pre-hashing with EdDSA
         # https://tools.ietf.org/html/draft-ietf-openpgp-rfc4880bis-06#section-14.8
-        digest = hashes.Hash(hash_alg, backend=default_backend())
-        digest.update(sigdata)
-        sigdata = digest.finalize()
-        return self.__privkey__().sign(sigdata)
+        h = hash_alg.new(sigdata)
+        sigdata = h.digest()
+        return _eddsa.new(self.__privkey__(), 'rfc8032').sign(sigdata)
 
 
 class ECDHPriv(ECDSAPriv, ECDHPub):
@@ -1591,9 +1574,9 @@ class ECDHPriv(ECDSAPriv, ECDHPub):
 
     def __privkey__(self):
         if self.oid == EllipticCurveOID.Curve25519:
-            # NOTE: openssl and GPG don't use the same endianness for Curve25519 secret value
+            # NOTE: GPG stores Curve25519 secret in little-endian
             s = self.int_to_bytes(self.s, (self.oid.key_size + 7) // 8, 'little')
-            return x25519.X25519PrivateKey.from_private_bytes(s)
+            return _ECC.construct(curve='Curve25519', seed=s)
         else:
             return ECDSAPriv.__privkey__(self)
 
@@ -1603,15 +1586,11 @@ class ECDHPriv(ECDSAPriv, ECDHPub):
             if any(c != 0 for c in self):  # pragma: no cover
                 raise PGPError("Key is already populated!")
             self.oid = _oid
-            pk = x25519.X25519PrivateKey.generate()
-            x = pk.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
+            pk = _ECC.generate(curve='Curve25519')
+            x = pk.public_key().export_key(format='raw')
             self.p = ECPoint.from_values(self.oid.key_size, ECPointFormat.Native, x)
-            # NOTE: openssl and GPG don't use the same endianness for Curve25519 secret value
-            self.s = MPI(self.bytes_to_int(pk.private_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PrivateFormat.Raw,
-                encryption_algorithm=serialization.NoEncryption()
-            ), 'little'))
+            # NOTE: GPG stores Curve25519 secret in little-endian
+            self.s = MPI(self.bytes_to_int(pk.seed, 'little'))
             self._compute_chksum()
         else:
             ECDSAPriv._generate(self, oid)
@@ -1724,8 +1703,7 @@ class ECDHCipherText(CipherText):
         _m, = args
 
         # m may need to be PKCS5-padded
-        padder = PKCS7(64).padder()
-        m = padder.update(_m) + padder.finalize()
+        m = _pkcs7_pad(_m, 8, style='pkcs7')
 
         km = pk.keymaterial
         ct = cls()
@@ -1733,44 +1711,56 @@ class ECDHCipherText(CipherText):
         # generate ephemeral key pair and keep public key in ct
         # use private key to compute the shared point "s"
         if km.oid == EllipticCurveOID.Curve25519:
-            v = x25519.X25519PrivateKey.generate()
-            x = v.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
+            v = _ECC.generate(curve='Curve25519')
+            x = v.public_key().export_key(format='raw')
             ct.p = ECPoint.from_values(km.oid.key_size, ECPointFormat.Native, x)
-            s = v.exchange(km.__pubkey__())
+            # X25519 key exchange: shared = other_pub * my_priv
+            shared_point = km.__pubkey__().pointQ * v.d
+            # X25519 shared secret is in little-endian format (RFC 7748)
+            s = int(shared_point.x).to_bytes(32, 'little')
         else:
-            v = ec.generate_private_key(km.oid.curve(), default_backend())
-            x = MPI(v.public_key().public_numbers().x)
-            y = MPI(v.public_key().public_numbers().y)
+            v = _ECC.generate(curve=km.oid.curve().pcd_name)
+            x = MPI(int(v.pointQ.x))
+            y = MPI(int(v.pointQ.y))
             ct.p = ECPoint.from_values(km.oid.key_size, ECPointFormat.Standard, x, y)
-            s = v.exchange(ec.ECDH(), km.__pubkey__())
+            # ECDH: shared = other_pub * my_priv
+            shared_point = km.__pubkey__().pointQ * v.d
+            byte_size = (km.oid.key_size + 7) // 8
+            s = int(shared_point.x).to_bytes(byte_size, 'big')
 
         # derive the wrapping key
         z = km.kdf.derive_key(s, km.oid, PubKeyAlgorithm.ECDH, pk.fingerprint)
 
-        # compute C
-        ct.c = aes_key_wrap(z, m, default_backend())
+        # compute C using AES Key Wrap (RFC 3394)
+        ct.c = _AES.new(z, _AES.MODE_KW).seal(m)
 
         return ct
 
     def decrypt(self, pk, *args):
         km = pk.keymaterial
         if km.oid == EllipticCurveOID.Curve25519:
-            v = x25519.X25519PublicKey.from_public_bytes(self.p.x)
-            s = km.__privkey__().exchange(v)
+            # Build SubjectPublicKeyInfo DER for X25519 from raw ephemeral public key bytes
+            v = _ECC.import_key(raw_pub_to_der(bytes(self.p.x), X25519_ALG_ID))
+            # X25519 key exchange: shared = ephemeral_pub * my_priv
+            shared_point = v.pointQ * km.__privkey__().d
+            # X25519 shared secret is in little-endian format (RFC 7748)
+            s = int(shared_point.x).to_bytes(32, 'little')
         else:
             # assemble the public component of ephemeral key v
-            v = ec.EllipticCurvePublicNumbers(self.p.x, self.p.y, km.oid.curve()).public_key(default_backend())
+            v = _ECC.construct(curve=km.oid.curve().pcd_name,
+                               point_x=int(self.p.x), point_y=int(self.p.y))
             # compute s using the inverse of how it was derived during encryption
-            s = km.__privkey__().exchange(ec.ECDH(), v)
+            shared_point = v.pointQ * km.__privkey__().d
+            byte_size = (km.oid.key_size + 7) // 8
+            s = int(shared_point.x).to_bytes(byte_size, 'big')
 
         # derive the wrapping key
         z = km.kdf.derive_key(s, km.oid, PubKeyAlgorithm.ECDH, pk.fingerprint)
 
         # unwrap and unpad m
-        _m = aes_key_unwrap(z, self.c, default_backend())
+        _m = _AES.new(z, _AES.MODE_KW).unseal(bytes(self.c))
 
-        padder = PKCS7(64).unpadder()
-        return padder.update(_m) + padder.finalize()
+        return _pkcs7_unpad(_m, 8, style='pkcs7')
 
     def __init__(self):
         super(ECDHCipherText, self).__init__()

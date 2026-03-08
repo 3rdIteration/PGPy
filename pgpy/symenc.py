@@ -1,12 +1,5 @@
 """ symenc.py
 """
-from cryptography.exceptions import UnsupportedAlgorithm
-
-from cryptography.hazmat.backends import default_backend
-
-from cryptography.hazmat.primitives.ciphers import Cipher
-from cryptography.hazmat.primitives.ciphers import modes
-
 from .errors import PGPDecryptionError
 from .errors import PGPEncryptionError
 from .errors import PGPInsecureCipherError
@@ -26,13 +19,13 @@ def _encrypt(pt, key, alg, iv=None):
         raise PGPEncryptionError("Cipher {:s} not supported".format(alg.name))
 
     try:
-        encryptor = Cipher(alg.cipher(key), modes.CFB(iv), default_backend()).encryptor()
+        cipher = alg.cipher.new(key, alg.cipher.MODE_CFB, iv=iv, segment_size=alg.block_size)
 
-    except UnsupportedAlgorithm as ex:  # pragma: no cover
+    except Exception as ex:  # pragma: no cover
         raise PGPEncryptionError from ex
 
     else:
-        return bytearray(encryptor.update(pt) + encryptor.finalize())
+        return bytearray(cipher.encrypt(pt))
 
 
 def _decrypt(ct, key, alg, iv=None):
@@ -47,10 +40,10 @@ def _decrypt(ct, key, alg, iv=None):
         iv = b'\x00' * (alg.block_size // 8)
 
     try:
-        decryptor = Cipher(alg.cipher(key), modes.CFB(iv), default_backend()).decryptor()
+        cipher = alg.cipher.new(key, alg.cipher.MODE_CFB, iv=iv, segment_size=alg.block_size)
 
-    except UnsupportedAlgorithm as ex:  # pragma: no cover
+    except Exception as ex:  # pragma: no cover
         raise PGPDecryptionError from ex
 
     else:
-        return bytearray(decryptor.update(ct) + decryptor.finalize())
+        return bytearray(cipher.decrypt(ct))

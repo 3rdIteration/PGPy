@@ -54,11 +54,23 @@ Requirements
 
   Tested with: 3.10, 3.9, 3.8, 3.7, 3.6
 
-- `Cryptography <https://pypi.python.org/pypi/cryptography>`_
+- `PyCryptodomex <https://pypi.python.org/pypi/pycryptodomex>`_
 
 - `pyasn1 <https://pypi.python.org/pypi/pyasn1/>`_
 
-- `six <https://pypi.python.org/pypi/six>`_
+Cipher Support Notes
+~~~~~~~~~~~~~~~~~~~~
+
+This fork uses `PyCryptodomex` as its cryptographic backend instead of `python-cryptography`.
+As a result, the following symmetric ciphers are **not supported** for encryption:
+
+- **Camellia** (128/192/256) - not available in PyCryptodomex
+- **Twofish256** - not available in PyCryptodomex
+- **IDEA** - insecure; only available for decryption of legacy messages
+
+PGPy can still parse and recognize keys and messages that reference these algorithms, but cannot
+perform encryption operations with them. All other algorithms (AES, TripleDES, CAST5, Blowfish)
+are fully supported.
 
 License
 -------

@@ -14,9 +14,9 @@ else:
 import os
 import sys
 
-from cryptography.hazmat.backends import openssl
+import Cryptodome
+pycryptodomex_ver = Cryptodome.__version__
 
-openssl_ver = openssl.backend.openssl_version_text().split(' ')[1]
 gnupghome = os.path.join(os.path.dirname(__file__), 'gnupghome')
 
 # ensure external commands we need to run exist
@@ -64,8 +64,8 @@ def pytest_configure(config):
         if os.getenv('CI'):
             sys.exit(1)
 
-    # display the working directory and the OpenSSL/GPG/pgpdump versions
+    # display the working directory and the PyCryptodomex/GPG versions
     print("Working Directory: " + os.getcwd())
-    print("Using OpenSSL " + str(openssl_ver))
+    print("Using PyCryptodomex " + str(pycryptodomex_ver))
     print("Using GnuPG   " + str(gpg_ver))
     print("")

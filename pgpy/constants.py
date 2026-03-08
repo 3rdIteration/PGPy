@@ -14,16 +14,18 @@ from enum import IntFlag
 
 from pyasn1.type.univ import ObjectIdentifier
 
-from cryptography.hazmat.backends import openssl
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.ciphers import algorithms
+from Cryptodome.Cipher import AES
+from Cryptodome.Cipher import DES3
+from Cryptodome.Cipher import CAST
+from Cryptodome.Cipher import Blowfish
 
 from .types import FlagEnum
 from .decorators import classproperty
 from ._curves import BrainpoolP256R1, BrainpoolP384R1, BrainpoolP512R1, X25519, Ed25519
+from ._curves import SECP256R1, SECP384R1, SECP521R1, SECP256K1
+from ._curves import _CURVE_TYPES, _get_supported_curves
 
 __all__ = [
-    'Backend',
     'EllipticCurveOID',
     'ECPointFormat',
     'PacketTag',
@@ -51,10 +53,6 @@ __all__ = [
 _hashtunedata = bytearray([10, 11, 12, 13, 14, 15, 16, 17] * 128 * 50)
 
 
-class Backend(Enum):
-    OpenSSL = openssl.backend
-
-
 class EllipticCurveOID(Enum):
     """OIDs for supported elliptic curves."""
     # these are specified as:
@@ -65,11 +63,11 @@ class EllipticCurveOID(Enum):
     #: Twisted Edwards variant of Curve25519
     Ed25519 = ('1.3.6.1.4.1.11591.15.1', Ed25519)
     #: NIST P-256, also known as SECG curve secp256r1
-    NIST_P256 = ('1.2.840.10045.3.1.7', ec.SECP256R1)
+    NIST_P256 = ('1.2.840.10045.3.1.7', SECP256R1)
     #: NIST P-384, also known as SECG curve secp384r1
-    NIST_P384 = ('1.3.132.0.34', ec.SECP384R1)
+    NIST_P384 = ('1.3.132.0.34', SECP384R1)
     #: NIST P-521, also known as SECG curve secp521r1
-    NIST_P521 = ('1.3.132.0.35', ec.SECP521R1)
+    NIST_P521 = ('1.3.132.0.35', SECP521R1)
     #: Brainpool Standard Curve, 256-bit
     #:
     #: .. note::
@@ -86,7 +84,7 @@ class EllipticCurveOID(Enum):
     #:     Requires OpenSSL >= 1.0.2
     Brainpool_P512 = ('1.3.36.3.3.2.8.1.1.13', BrainpoolP512R1)
     #: SECG curve secp256k1
-    SECP256K1 = ('1.3.132.0.10', ec.SECP256K1)
+    SECP256K1 = ('1.3.132.0.10', SECP256K1)
 
     def __new__(cls, oid, curve=None):
         # preprocessing stage for enum members:
@@ -97,7 +95,7 @@ class EllipticCurveOID(Enum):
         obj._value_ = ObjectIdentifier(oid)
         obj.curve = None
 
-        if curve is not None and curve.name in ec._CURVE_TYPES:
+        if curve is not None and curve.name in _CURVE_TYPES:
             obj.curve = curve
 
         return obj
@@ -189,17 +187,17 @@ class SymmetricKeyAlgorithm(IntEnum):
 
     @property
     def cipher(self):
-        bs = {SymmetricKeyAlgorithm.IDEA: algorithms.IDEA,
-              SymmetricKeyAlgorithm.TripleDES: algorithms.TripleDES,
-              SymmetricKeyAlgorithm.CAST5: algorithms.CAST5,
-              SymmetricKeyAlgorithm.Blowfish: algorithms.Blowfish,
-              SymmetricKeyAlgorithm.AES128: algorithms.AES,
-              SymmetricKeyAlgorithm.AES192: algorithms.AES,
-              SymmetricKeyAlgorithm.AES256: algorithms.AES,
+        bs = {SymmetricKeyAlgorithm.IDEA: namedtuple('IDEA', ['block_size'])(block_size=64),
+              SymmetricKeyAlgorithm.TripleDES: DES3,
+              SymmetricKeyAlgorithm.CAST5: CAST,
+              SymmetricKeyAlgorithm.Blowfish: Blowfish,
+              SymmetricKeyAlgorithm.AES128: AES,
+              SymmetricKeyAlgorithm.AES192: AES,
+              SymmetricKeyAlgorithm.AES256: AES,
               SymmetricKeyAlgorithm.Twofish256: namedtuple('Twofish256', ['block_size'])(block_size=128),
-              SymmetricKeyAlgorithm.Camellia128: algorithms.Camellia,
-              SymmetricKeyAlgorithm.Camellia192: algorithms.Camellia,
-              SymmetricKeyAlgorithm.Camellia256: algorithms.Camellia}
+              SymmetricKeyAlgorithm.Camellia128: namedtuple('Camellia128', ['block_size'])(block_size=128),
+              SymmetricKeyAlgorithm.Camellia192: namedtuple('Camellia192', ['block_size'])(block_size=128),
+              SymmetricKeyAlgorithm.Camellia256: namedtuple('Camellia256', ['block_size'])(block_size=128)}
 
         if self in bs:
             return bs[self]
@@ -208,7 +206,7 @@ class SymmetricKeyAlgorithm(IntEnum):
 
     @property
     def is_supported(self):
-        return callable(self.cipher)
+        return hasattr(self.cipher, 'new')
 
     @property
     def is_insecure(self):
@@ -217,7 +215,14 @@ class SymmetricKeyAlgorithm(IntEnum):
 
     @property
     def block_size(self):
-        return self.cipher.block_size
+        c = self.cipher
+        if hasattr(c, 'block_size'):
+            bs = c.block_size
+            # pycryptodomex uses bytes; convert to bits if needed
+            if bs <= 32:  # pycryptodomex returns bytes (e.g. 16 for AES)
+                return bs * 8
+            return bs  # already in bits (namedtuple stubs)
+        raise NotImplementedError(repr(self))
 
     @property
     def key_size(self):

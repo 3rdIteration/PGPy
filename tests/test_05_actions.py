@@ -20,7 +20,7 @@ from pgpy import PGPKey
 from pgpy import PGPMessage
 from pgpy import PGPSignature
 from pgpy import PGPUID
-from pgpy._curves import _openssl_get_supported_curves
+from pgpy._curves import _get_supported_curves
 from pgpy.constants import CompressionAlgorithm
 from pgpy.constants import EllipticCurveOID
 from pgpy.constants import Features
@@ -288,7 +288,7 @@ class TestPGPKey_Management(object):
         if not alg.can_gen:
             pytest.xfail('Key algorithm {} not yet supported'.format(alg.name))
 
-        if isinstance(size, EllipticCurveOID) and ((not size.can_gen) or size.curve.name not in _openssl_get_supported_curves()):
+        if isinstance(size, EllipticCurveOID) and ((not size.can_gen) or size.curve.name not in _get_supported_curves()):
             pytest.xfail('Curve {} not yet supported'.format(size.curve.name))
 
         key = self.keys[pkspec]
@@ -511,7 +511,7 @@ class TestPGPKey_Management(object):
         if not alg.can_gen:
             pytest.xfail('Key algorithm {} not yet supported'.format(alg.name))
 
-        if isinstance(size, EllipticCurveOID) and ((not size.can_gen) or size.curve.name not in _openssl_get_supported_curves()):
+        if isinstance(size, EllipticCurveOID) and ((not size.can_gen) or size.curve.name not in _get_supported_curves()):
             pytest.xfail('Curve {} not yet supported'.format(size.curve.name))
 
         # revoke the subkey
@@ -912,7 +912,8 @@ class TestPGPKey_Actions(object):
         if pub.key_algorithm in {PubKeyAlgorithm.DSA}:
             pytest.skip('Asymmetric encryption only implemented for RSA/ECDH currently')
 
-        if cipher in {SymmetricKeyAlgorithm.Plaintext, SymmetricKeyAlgorithm.Twofish256, SymmetricKeyAlgorithm.IDEA}:
+        if cipher in {SymmetricKeyAlgorithm.Plaintext, SymmetricKeyAlgorithm.Twofish256, SymmetricKeyAlgorithm.IDEA,
+                     SymmetricKeyAlgorithm.Camellia128, SymmetricKeyAlgorithm.Camellia192, SymmetricKeyAlgorithm.Camellia256}:
             pytest.xfail('Symmetric cipher {} not supported for encryption'.format(cipher))
 
         # test encrypting a message
