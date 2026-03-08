@@ -912,7 +912,8 @@ class TestPGPKey_Actions(object):
         if pub.key_algorithm in {PubKeyAlgorithm.DSA}:
             pytest.skip('Asymmetric encryption only implemented for RSA/ECDH currently')
 
-        if cipher in {SymmetricKeyAlgorithm.Plaintext, SymmetricKeyAlgorithm.Twofish256, SymmetricKeyAlgorithm.IDEA}:
+        if cipher in {SymmetricKeyAlgorithm.Plaintext, SymmetricKeyAlgorithm.Twofish256, SymmetricKeyAlgorithm.IDEA,
+                     SymmetricKeyAlgorithm.Camellia128, SymmetricKeyAlgorithm.Camellia192, SymmetricKeyAlgorithm.Camellia256}:
             pytest.xfail('Symmetric cipher {} not supported for encryption'.format(cipher))
 
         # test encrypting a message

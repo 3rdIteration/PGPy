@@ -570,7 +570,7 @@ class ECDSAPub(PubKey):
     def verify(self, subj, sigbytes, hash_alg):
         try:
             h = hash_alg.new(subj)
-            _DSS.new(self.__pubkey__(), 'fips-186-3', encoding='der').verify(h, sigbytes)
+            _DSS.new(self.__pubkey__(), 'deterministic-rfc6979', encoding='der').verify(h, sigbytes)
         except (ValueError, TypeError):
             return False
         return True
@@ -1505,7 +1505,7 @@ class ECDSAPriv(PrivKey, ECDSAPub):
 
     def sign(self, sigdata, hash_alg):
         h = hash_alg.new(sigdata)
-        return _DSS.new(self.__privkey__(), 'fips-186-3', encoding='der').sign(h)
+        return _DSS.new(self.__privkey__(), 'deterministic-rfc6979', encoding='der').sign(h)
 
 
 class EdDSAPriv(PrivKey, EdDSAPub):
@@ -1724,7 +1724,8 @@ class ECDHCipherText(CipherText):
             ct.p = ECPoint.from_values(km.oid.key_size, ECPointFormat.Native, x)
             # X25519 key exchange: shared = other_pub * my_priv
             shared_point = km.__pubkey__().pointQ * v.d
-            s = int(shared_point.x).to_bytes(32, 'big')
+            # X25519 shared secret is in little-endian format (RFC 7748)
+            s = int(shared_point.x).to_bytes(32, 'little')
         else:
             v = _ECC.generate(curve=km.oid.curve().pcd_name)
             x = MPI(int(v.pointQ.x))
@@ -1754,7 +1755,8 @@ class ECDHCipherText(CipherText):
             v = _ECC.import_key(der)
             # X25519 key exchange: shared = ephemeral_pub * my_priv
             shared_point = v.pointQ * km.__privkey__().d
-            s = int(shared_point.x).to_bytes(32, 'big')
+            # X25519 shared secret is in little-endian format (RFC 7748)
+            s = int(shared_point.x).to_bytes(32, 'little')
         else:
             # assemble the public component of ephemeral key v
             v = _ECC.construct(curve=km.oid.curve().pcd_name,
