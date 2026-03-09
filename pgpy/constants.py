@@ -14,10 +14,12 @@ from enum import IntFlag
 
 from pyasn1.type.univ import ObjectIdentifier
 
-from Cryptodome.Cipher import AES
-from Cryptodome.Cipher import DES3
-from Cryptodome.Cipher import CAST
-from Cryptodome.Cipher import Blowfish
+from ._backend import get_cipher_module as _get_cipher_module
+
+_AES = _get_cipher_module('AES')
+_DES3 = _get_cipher_module('DES3')
+_CAST5 = _get_cipher_module('CAST5')
+_Blowfish = _get_cipher_module('Blowfish')
 
 from .types import FlagEnum
 from .decorators import classproperty
@@ -188,12 +190,12 @@ class SymmetricKeyAlgorithm(IntEnum):
     @property
     def cipher(self):
         bs = {SymmetricKeyAlgorithm.IDEA: namedtuple('IDEA', ['block_size'])(block_size=64),
-              SymmetricKeyAlgorithm.TripleDES: DES3,
-              SymmetricKeyAlgorithm.CAST5: CAST,
-              SymmetricKeyAlgorithm.Blowfish: Blowfish,
-              SymmetricKeyAlgorithm.AES128: AES,
-              SymmetricKeyAlgorithm.AES192: AES,
-              SymmetricKeyAlgorithm.AES256: AES,
+              SymmetricKeyAlgorithm.TripleDES: _DES3,
+              SymmetricKeyAlgorithm.CAST5: _CAST5,
+              SymmetricKeyAlgorithm.Blowfish: _Blowfish,
+              SymmetricKeyAlgorithm.AES128: _AES,
+              SymmetricKeyAlgorithm.AES192: _AES,
+              SymmetricKeyAlgorithm.AES256: _AES,
               SymmetricKeyAlgorithm.Twofish256: namedtuple('Twofish256', ['block_size'])(block_size=128),
               SymmetricKeyAlgorithm.Camellia128: namedtuple('Camellia128', ['block_size'])(block_size=128),
               SymmetricKeyAlgorithm.Camellia192: namedtuple('Camellia192', ['block_size'])(block_size=128),
@@ -218,8 +220,9 @@ class SymmetricKeyAlgorithm(IntEnum):
         c = self.cipher
         if hasattr(c, 'block_size'):
             bs = c.block_size
-            # pycryptodomex uses bytes; convert to bits if needed
-            if bs <= 32:  # pycryptodomex returns bytes (e.g. 16 for AES)
+            # pycryptodomex uses bytes (e.g. 16 for AES), python-cryptography
+            # wrappers also use bytes; convert to bits if needed
+            if bs <= 32:  # bytes (e.g. 16 for AES)
                 return bs * 8
             return bs  # already in bits (namedtuple stubs)
         raise NotImplementedError(repr(self))
