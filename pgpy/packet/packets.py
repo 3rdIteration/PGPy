@@ -211,9 +211,14 @@ class PKESessionKeyV3(PKESessionKey):
         if self.pkalg == PubKeyAlgorithm.RSAEncryptOrSign:
             # pad up ct with null bytes if necessary
             ct = self.ct.me_mod_n.to_mpibytes()[2:]
-            ct = b'\x00' * ((pk.keymaterial.__privkey__().size_in_bits() // 8) - len(ct)) + ct
+            privkey = pk.keymaterial.__privkey__()
+            if hasattr(privkey, 'size_in_bits'):
+                key_bytes = privkey.size_in_bits() // 8
+            else:
+                key_bytes = privkey.key_size // 8
+            ct = b'\x00' * (key_bytes - len(ct)) + ct
 
-            decrypter = _pkcs1v15_cipher(pk.keymaterial.__privkey__()).decrypt
+            decrypter = _pkcs1v15_cipher(privkey).decrypt
             decargs = (ct, None,)
 
         elif self.pkalg == PubKeyAlgorithm.ECDH:

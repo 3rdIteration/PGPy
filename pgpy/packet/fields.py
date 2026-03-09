@@ -790,12 +790,21 @@ class ECDHPub(PubKey):
         return len(self.p) + len(self.kdf) + len(encoder.encode(self.oid.value)) - 1
 
     def __pubkey__(self):
-        if self.oid == EllipticCurveOID.Curve25519:
-            # Build SubjectPublicKeyInfo DER for X25519 from raw public key bytes
-            return _ECC.import_key(raw_pub_to_der(bytes(self.p.x), X25519_ALG_ID))
+        if BACKEND == 'cryptography':
+            if self.oid == EllipticCurveOID.Curve25519:
+                return _crypto_x25519.X25519PublicKey.from_public_bytes(bytes(self.p.x))
+            else:
+                curve = _get_crypto_curve(self.oid.curve().pcd_name)
+                pub_nums = _crypto_ec.EllipticCurvePublicNumbers(
+                    int(self.p.x), int(self.p.y), curve)
+                return pub_nums.public_key()
         else:
-            return _ECC.construct(curve=self.oid.curve().pcd_name,
-                                  point_x=int(self.p.x), point_y=int(self.p.y))
+            if self.oid == EllipticCurveOID.Curve25519:
+                # Build SubjectPublicKeyInfo DER for X25519 from raw public key bytes
+                return _ECC.import_key(raw_pub_to_der(bytes(self.p.x), X25519_ALG_ID))
+            else:
+                return _ECC.construct(curve=self.oid.curve().pcd_name,
+                                      point_x=int(self.p.x), point_y=int(self.p.y))
 
     def __bytearray__(self):
         _b = bytearray()

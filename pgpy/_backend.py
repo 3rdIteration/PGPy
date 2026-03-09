@@ -221,13 +221,16 @@ class _AESModuleWrapper(_CipherModuleWrapper):
 def _build_cipher_modules():
     """Build cipher module wrappers for the active backend."""
     if BACKEND == 'cryptography':
+        import warnings
         from cryptography.hazmat.primitives.ciphers import algorithms
-        return {
-            'AES': _AESModuleWrapper(),
-            'DES3': _CipherModuleWrapper(algorithms.TripleDES, 8),
-            'CAST5': _CipherModuleWrapper(algorithms.CAST5, 8),
-            'Blowfish': _CipherModuleWrapper(algorithms.Blowfish, 8),
-        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            return {
+                'AES': _AESModuleWrapper(),
+                'DES3': _CipherModuleWrapper(algorithms.TripleDES, 8),
+                'CAST5': _CipherModuleWrapper(algorithms.CAST5, 8),
+                'Blowfish': _CipherModuleWrapper(algorithms.Blowfish, 8),
+            }
     else:
         from Cryptodome.Cipher import AES, DES3, CAST, Blowfish
         return {

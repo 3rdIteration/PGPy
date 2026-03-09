@@ -27,8 +27,7 @@ def test_reg_bug_56():
     from pgpy.constants import PubKeyAlgorithm
     from pgpy.constants import SignatureType
 
-    from Cryptodome.Signature import pkcs1_15
-    from Cryptodome.Hash import SHA512
+    from pgpy._backend import BACKEND
 
     # do a regression test on issue #56
     # re-create a signature that would have been encoded improperly as with issue #56
@@ -140,8 +139,15 @@ def test_reg_bug_56():
     sig._signature.hash2 = hashlib.new('sha512', hdata).digest()[:2]
 
     # create the signature
-    h = SHA512.new(hdata)
-    signature = pkcs1_15.new(sk.__key__.__privkey__()).sign(h)
+    if BACKEND == 'cryptography':
+        from cryptography.hazmat.primitives.asymmetric import padding as crypto_padding
+        from cryptography.hazmat.primitives import hashes as crypto_hashes
+        signature = sk.__key__.__privkey__().sign(hdata, crypto_padding.PKCS1v15(), crypto_hashes.SHA512())
+    else:
+        from Cryptodome.Signature import pkcs1_15
+        from Cryptodome.Hash import SHA512
+        h = SHA512.new(hdata)
+        signature = pkcs1_15.new(sk.__key__.__privkey__()).sign(h)
     sig._signature.signature.from_signer(signature)
     sig._signature.update_hlen()
 
