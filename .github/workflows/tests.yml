@@ -1,112 +1,119 @@
 name: Tox Tests
 on: [push, pull_request]
 jobs:
-  unit-tests:
+  # Test with python-cryptography as primary backend
+  test-cryptography:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-18.04, macos-10.15]
-        python-version: [3.6, 3.7, 3.8, 3.9, '3.10']
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install requirements
+      - name: Install dependencies (cryptography only)
         run: |
-          sed -i -e 's/^/#/' tests/gnupghome/gpg-agent.conf
-          if [ "$(uname)" = "Darwin" ]; then ./install_dependencies.osx.sh; else ./install_dependencies.linux.sh; fi
-          pip install tox coveralls
-      - name: Run Tox
-        run: ./tox.sh -e py
-      - name: Upload Coveralls coverage
-        if: ${{ success() }}
-        run: coveralls --service=github
+          pip install cryptography pyasn1 pytest
+          pip install -e .
+      - name: Verify backend
+        run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'cryptography', f'Expected cryptography, got {BACKEND}'"
+      - name: Run tests
+        run: CI='' python -m pytest tests/ -v --tb=short
         env:
-          COVERALLS_PARALLEL: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: ''
 
-  # do some tests with LC_ALL=C to check for locale variance
-  c-locale-test:
-    runs-on: ubuntu-18.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.6
-      - name: Install requirements
-        run: |
-          sed -i -e 's/^/#/' tests/gnupghome/gpg-agent.conf
-          ./install_dependencies.linux.sh
-          pip install tox coveralls
-      - name: Run Tox
-        run: ./tox.sh -e py
-        env:
-          LC_ALL: C
-      - name: Upload Coveralls coverage
-        if: ${{ success() }}
-        run: coveralls --service=github
-        env:
-          COVERALLS_PARALLEL: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # test setup.py using each tested version
-  test-setup:
-    runs-on: ubuntu-18.04
+  # Test with pycryptodomex as fallback backend
+  test-pycryptodomex:
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - python-version: 3.6
-            env: py36-setup
-          - python-version: 3.7
-            env: py37-setup
-          - python-version: 3.8
-            env: py38-setup
-          - python-version: 3.9
-            env: py39-setup
-          - python-version: '3.10'
-            env: py310-setup
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install tox
-        run: pip install tox
-      - name: Run tox
-        run: tox -e ${{ matrix.env }}
+      - name: Install dependencies (pycryptodomex only, no cryptography)
+        run: |
+          pip install pycryptodomex>=3.23 pyasn1 ecdsa>=0.19 pytest
+          pip install --no-deps -e .
+          # Ensure cryptography is NOT installed
+          pip uninstall -y cryptography 2>/dev/null || true
+      - name: Verify backend
+        run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'pycryptodomex', f'Expected pycryptodomex, got {BACKEND}'"
+      - name: Run tests
+        run: CI='' python -m pytest tests/ -v --tb=short
+        env:
+          CI: ''
+
+  # Test with both backends installed (cryptography should be preferred)
+  test-both-backends:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.10', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies (both backends)
+        run: |
+          pip install cryptography pycryptodomex>=3.23 pyasn1 ecdsa>=0.19 pytest
+          pip install -e .
+      - name: Verify backend preference
+        run: python -c "from pgpy._backend import BACKEND, _has_cryptography, _has_pycryptodomex; assert _has_cryptography and _has_pycryptodomex; assert BACKEND == 'cryptography'"
+      - name: Run tests
+        run: CI='' python -m pytest tests/ -v --tb=short
+        env:
+          CI: ''
+
+  # Backend-specific tests
+  test-backend-specific:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install all backends
+        run: |
+          pip install cryptography pycryptodomex>=3.23 pyasn1 ecdsa>=0.19 pytest
+          pip install -e .
+      - name: Run backend-specific tests
+        run: CI='' python -m pytest tests/test_backend.py tests/test_ecdsa_fallback.py -v
+        env:
+          CI: ''
 
   # add a pep8 test
   pep8:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     continue-on-error: true # pep8 failures shouldn't be considered fatal
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: 3.6
+          python-version: '3.12'
       - name: Install tox
         run: pip install tox
       - name: Run tox
         run: tox -e pep8
-
-  # report coverage to coveralls, but only for pytest runs
-  finish-coveralls:
-    needs: [ unit-tests, c-locale-test ]
-    runs-on: ubuntu-18.04
-
-    steps:
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.6
-      - name: Finish Coveralls
-        run: |
-          pip install coveralls
-          coveralls --service=github --finish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

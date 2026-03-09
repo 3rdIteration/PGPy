@@ -3,10 +3,11 @@ import pytest
 import warnings
 
 import pgpy
+from pgpy._backend import BACKEND
 from pgpy.constants import (
     PubKeyAlgorithm, EllipticCurveOID, HashAlgorithm, KeyFlags,
 )
-from pgpy.packet.fields import _ECDSA_CURVES, _has_embit
+from pgpy.packet.fields import _ECDSA_CURVES, _has_embit, _has_ecdsa
 
 
 # Suppress self-sigs / revocation warnings

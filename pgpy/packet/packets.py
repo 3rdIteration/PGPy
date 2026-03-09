@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import hmac
 
-from Cryptodome.Cipher import PKCS1_v1_5 as _PKCS1_v1_5
+from .._backend import pkcs1v15_cipher as _pkcs1v15_cipher
 
 from .fields import DSAPriv, DSAPub, DSASignature
 from .fields import ECDSAPub, ECDSAPriv, ECDSASignature
@@ -211,9 +211,14 @@ class PKESessionKeyV3(PKESessionKey):
         if self.pkalg == PubKeyAlgorithm.RSAEncryptOrSign:
             # pad up ct with null bytes if necessary
             ct = self.ct.me_mod_n.to_mpibytes()[2:]
-            ct = b'\x00' * ((pk.keymaterial.__privkey__().size_in_bits() // 8) - len(ct)) + ct
+            privkey = pk.keymaterial.__privkey__()
+            if hasattr(privkey, 'size_in_bits'):
+                key_bytes = privkey.size_in_bits() // 8
+            else:
+                key_bytes = privkey.key_size // 8
+            ct = b'\x00' * (key_bytes - len(ct)) + ct
 
-            decrypter = _PKCS1_v1_5.new(pk.keymaterial.__privkey__()).decrypt
+            decrypter = _pkcs1v15_cipher(privkey).decrypt
             decargs = (ct, None,)
 
         elif self.pkalg == PubKeyAlgorithm.ECDH:
@@ -257,7 +262,7 @@ class PKESessionKeyV3(PKESessionKey):
         m += self.int_to_bytes(sum(bytearray(symkey)) % 65536, 2)
 
         if self.pkalg == PubKeyAlgorithm.RSAEncryptOrSign:
-            encrypter = _PKCS1_v1_5.new(pk.keymaterial.__pubkey__()).encrypt
+            encrypter = _pkcs1v15_cipher(pk.keymaterial.__pubkey__()).encrypt
             encargs = (bytes(m),)
 
         elif self.pkalg == PubKeyAlgorithm.ECDH:
