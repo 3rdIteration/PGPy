@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies (cryptography only)
         run: |
           pip install --upgrade pip
-          pip install 'cryptography>=45.0' pyasn1 pytest pycryptodomex ecdsa
+          pip install 'cryptography>=45.0' pyasn1 pytest pycryptodomex ecdsa pytest-order
           pip install -e .
       - name: Verify backend
         run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'cryptography', f'Expected cryptography, got {BACKEND}'"
@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies (pycryptodomex only, no cryptography)
         run: |
           pip install --upgrade pip
-          pip install 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest
+          pip install 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest pytest-order
           pip install --no-deps -e .
           # Ensure cryptography is NOT installed
           pip uninstall -y cryptography 2>/dev/null || true
@@ -77,7 +77,7 @@ jobs:
       - name: Install dependencies (both backends)
         run: |
           pip install --upgrade pip
-          pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest
+          pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest pytest-order
           pip install -e .
       - name: Verify backend preference
         run: python -c "from pgpy._backend import BACKEND, _has_cryptography, _has_pycryptodomex; assert _has_cryptography and _has_pycryptodomex; assert BACKEND == 'cryptography'"
@@ -103,7 +103,7 @@ jobs:
       - name: Install all backends
         run: |
           pip install --upgrade pip
-          pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest
+          pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest pytest-order
           pip install -e .
       - name: Run backend-specific tests
         run: CI='' python -m pytest tests/test_backend.py tests/test_ecdsa_fallback.py -v
