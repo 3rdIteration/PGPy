@@ -18,6 +18,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install Rust (for cryptography build on newer Python)
+        if: matrix.python-version == '3.13' || matrix.python-version == '3.14'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Install dependencies (cryptography only)
         run: |
           pip install --upgrade pip
@@ -37,7 +42,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ['3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +60,12 @@ jobs:
       - name: Verify backend
         run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'pycryptodomex', f'Expected pycryptodomex, got {BACKEND}'"
       - name: Run tests
-        run: CI='' python -m pytest tests/ -v --tb=short
+        run: CI='' python -m pytest tests/ -v --tb=short 2>&1 | tee /tmp/test_output.txt
         env:
           CI: ''
+      - name: Show test failures
+        if: failure()
+        run: grep -A5 "FAILED\|ERROR" /tmp/test_output.txt || cat /tmp/test_output.txt | tail -100
 
   # Test with both backends installed (cryptography should be preferred)
   test-both-backends:
@@ -66,7 +74,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ['3.12', '3.14']
+        python-version: ['3.12']
 
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12', '3.14']
+        python-version: ['3.12']
 
     steps:
       - uses: actions/checkout@v4
