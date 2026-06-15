@@ -71,7 +71,7 @@ jobs:
           pip install 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest pytest-order
           pip install --no-deps -e .
           # Ensure cryptography is NOT installed
-          pip uninstall -y cryptography 2>/dev/null || true
+          python -c "import subprocess, sys; subprocess.run([sys.executable, '-m', 'pip', 'uninstall', '-y', 'cryptography'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)"
       - name: Verify backend
         run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'pycryptodomex', f'Expected pycryptodomex, got {BACKEND}'"
       - name: Run tests
