@@ -36,7 +36,7 @@ jobs:
       - name: Verify backend
         run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'cryptography', f'Expected cryptography, got {BACKEND}'"
       - name: Run tests
-        run: CI='' python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short
         env:
           CI: ''
 
@@ -106,7 +106,7 @@ jobs:
       - name: Verify backend preference
         run: python -c "from pgpy._backend import BACKEND, _has_cryptography, _has_pycryptodomex; assert _has_cryptography and _has_pycryptodomex; assert BACKEND == 'cryptography'"
       - name: Run tests
-        run: CI='' python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short
         env:
           CI: ''
 
@@ -134,7 +134,7 @@ jobs:
           pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest pytest-order
           pip install -e .
       - name: Run backend-specific tests
-        run: CI='' python -m pytest tests/test_backend.py tests/test_ecdsa_fallback.py -v
+        run: python -m pytest tests/test_backend.py tests/test_ecdsa_fallback.py -v
         env:
           CI: ''
 
