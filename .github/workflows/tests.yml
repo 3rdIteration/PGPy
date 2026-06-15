@@ -1,5 +1,7 @@
 name: Tox Tests
 on: [push, pull_request]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   # Test with python-cryptography as primary backend
   test-cryptography:
@@ -8,17 +10,18 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies (cryptography only)
         run: |
-          pip install cryptography pyasn1 pytest
+          pip install --upgrade pip
+          pip install 'cryptography>=45.0' pyasn1 pytest
           pip install -e .
       - name: Verify backend
         run: python -c "from pgpy._backend import BACKEND; assert BACKEND == 'cryptography', f'Expected cryptography, got {BACKEND}'"
@@ -34,17 +37,18 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies (pycryptodomex only, no cryptography)
         run: |
-          pip install pycryptodomex>=3.23 pyasn1 ecdsa>=0.19 pytest
+          pip install --upgrade pip
+          pip install 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest
           pip install --no-deps -e .
           # Ensure cryptography is NOT installed
           pip uninstall -y cryptography 2>/dev/null || true
@@ -62,17 +66,18 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ['3.10', '3.12']
+        python-version: ['3.12', '3.13']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies (both backends)
         run: |
-          pip install cryptography pycryptodomex>=3.23 pyasn1 ecdsa>=0.19 pytest
+          pip install --upgrade pip
+          pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest
           pip install -e .
       - name: Verify backend preference
         run: python -c "from pgpy._backend import BACKEND, _has_cryptography, _has_pycryptodomex; assert _has_cryptography and _has_pycryptodomex; assert BACKEND == 'cryptography'"
@@ -87,17 +92,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.12']
+        python-version: ['3.12', '3.13']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install all backends
         run: |
-          pip install cryptography pycryptodomex>=3.23 pyasn1 ecdsa>=0.19 pytest
+          pip install --upgrade pip
+          pip install 'cryptography>=45.0' 'pycryptodomex>=3.23' pyasn1 'ecdsa>=0.19' pytest
           pip install -e .
       - name: Run backend-specific tests
         run: CI='' python -m pytest tests/test_backend.py tests/test_ecdsa_fallback.py -v
@@ -109,11 +115,11 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true # pep8 failures shouldn't be considered fatal
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install tox
-        run: pip install tox
+        run: pip install --upgrade pip && pip install tox
       - name: Run tox
         run: tox -e pep8
