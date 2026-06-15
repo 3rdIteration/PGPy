@@ -2,7 +2,6 @@
 """
 import bz2
 import hashlib
-import imghdr
 import os
 import zlib
 import warnings
@@ -437,8 +436,7 @@ class ImageEncoding(IntEnum):
 
     @classmethod
     def encodingof(cls, imagebytes):
-        type = imghdr.what(None, h=imagebytes)
-        if type == 'jpeg':
+        if len(imagebytes) >= 3 and imagebytes[0:3] == b'\xff\xd8\xff':
             return ImageEncoding.JPEG
         return ImageEncoding.Unknown  # pragma: no cover
 
