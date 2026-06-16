@@ -362,7 +362,10 @@ class PGPSignature(Armorable, ParentRef, PGPObject):
         return "<PGPSignature [{:s}] object at 0x{:02x}>".format(self.type.name, id(self))
 
     def __lt__(self, other):
-        return self.created < other.created
+        # Sort by creation time first, then by signer ID for deterministic ordering
+        if self.created != other.created:
+            return self.created < other.created
+        return self.signer < other.signer
 
     def __or__(self, other):
         if isinstance(other, Signature):
