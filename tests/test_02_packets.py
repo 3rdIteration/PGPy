@@ -69,6 +69,9 @@ class TestPacket(object):
                 assert p.__bytes__() == b[:-len(_trailer)]
             else:
                 # For compressed packets, verify round-trip by re-parsing
+                # Update header length before serialization since compression may produce
+                # different output lengths on different platforms
+                p.update_hlen()
                 p_bytes = p.__bytes__()
                 _p_bytes = bytearray(p_bytes[:])
                 p2 = Packet(_p_bytes)
