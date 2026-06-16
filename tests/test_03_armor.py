@@ -322,9 +322,12 @@ class TestBlocks(object):
         # check str output
         # assert str(p) == bc
 
+        # normalize path separators for cross-platform compatibility
+        block_key = block.replace(os.sep, '/')
+
         # now check attrs
-        assert block in block_attrs
-        for attr, val in block_attrs[block]:
+        assert block_key in block_attrs
+        for attr, val in block_attrs[block_key]:
             attrval = getattr(p, attr)
             # this is probably more helpful than just 'assert attrval == val'
             if attrval != val:

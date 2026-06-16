@@ -106,7 +106,7 @@ class TestSymmetricCiphers:
     def test_des3_cfb(self):
         from pgpy._backend import get_cipher_module
         des3 = get_cipher_module('DES3')
-        key = b'\x01\x23\x45\x67\x89\xab\xcd\xef' * 3
+        key = b'\x01\x23\x45\x67\x89\xab\xcd\xef\xfe\xdc\xba\x98\x76\x54\x32\x10\xff\xee\xdd\xcc\xbb\xaa\x99\x88'
         iv = b'\x00' * 8
         cipher_enc = des3.new(key, des3.MODE_CFB, iv=iv, segment_size=64)
         ct = cipher_enc.encrypt(b'TestData')
