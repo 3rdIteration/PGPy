@@ -129,7 +129,7 @@ class Armorable(metaclass=abc.ABCMeta):
             m['hashes'] = m['hashes'].split(',')
 
         if m['headers'] is not None:
-            m['headers'] = collections.OrderedDict(re.findall('^(?P<key>.+): (?P<value>.+)$\n?', m['headers'], flags=re.MULTILINE))
+            m['headers'] = collections.OrderedDict((m.group('key').rstrip(), m.group('value').rstrip()) for m in re.finditer(r'^(?P<key>.+): (?P<value>.+)$\n?', m['headers'], flags=re.MULTILINE))
 
         if m['body'] is not None:
             try:
