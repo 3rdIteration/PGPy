@@ -1,8 +1,3 @@
 # Prevent line ending conversion for PGP test data files
 # These files must maintain their exact byte sequences for cryptographic operations
-tests/testdata/**/*.asc binary
-tests/testdata/**/*.gpg binary
-tests/testdata/**/*.pgp binary
-tests/testdata/**/*.key binary
-tests/testdata/**/*.pub binary
-tests/testdata/**/*.sec binary
+tests/testdata/** binary
